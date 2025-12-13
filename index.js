@@ -77,19 +77,22 @@ async function run() {
 
         // Users API
         app.post('/users', async (req, res) => {
-
             try {
-                const { name, email, photo, phone, role } = req.body;
-                if (!email) {
-                    return res.status(400).json({ error: "Email is required" });
-                }
-                // Check existing user
-                const existing = await userCollection.findOne({ email: email.toLowerCase() });
-                if (existing) {
-                    return res.status(409).json({ error: "User already exists." });
+                const { name, email, photo, phone } = req.body;
+                let { role } = req.body;
+
+                if (!email) return res.status(400).json({ error: "Email is required" });
+
+                // role safely
+                if (typeof role === 'string') {
+                    role = role.trim().toLowerCase();
+                } else {
+                    role = 'student';
                 }
 
-                // Only store profile info
+                const existing = await userCollection.findOne({ email: email.toLowerCase() });
+                if (existing) return res.status(409).json({ error: "User already exists." });
+
                 const userDoc = {
                     name,
                     email: email.toLowerCase(),
@@ -100,15 +103,13 @@ async function run() {
                 };
 
                 const result = await userCollection.insertOne(userDoc);
-
-                return res.status(201).json({
-                    insertedId: result.insertedId.toString()
-                });
+                return res.status(201).json({ insertedId: result.insertedId.toString() });
             } catch (err) {
                 console.error("Error saving user:", err);
                 return res.status(500).json({ error: "Internal Server Error" });
             }
         });
+
 
         //  GET Single User (For Role Verification)
         app.get('/users/:email', verifyFirebaseToken, async (req, res) => {
@@ -205,6 +206,31 @@ async function run() {
             }
         });
 
+        //=======================================================public tutor  APIs
+        // ======================================== Public Tutor APIs
+        // GET All Tutors (Public)
+        app.get('/tutors', async (req, res) => {
+            try {
+                const query = { role: 'tutor' };
+                const result = await userCollection.find(query).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching tutors" });
+            }
+        });
+
+        // GET Single Tutor Details
+        app.get('/tutors/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+                const query = { _id: new ObjectId(id), role: 'tutor' };
+                const result = await userCollection.findOne(query);
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching tutor details" });
+            }
+        });
+
         //=======================================================
         // ======================================== Public Tuition APIs
         //  GET All Approved Tuitions
@@ -215,15 +241,29 @@ async function run() {
                 const search = req.query.search || "";
                 const sort = req.query.sort || "createdAt";
                 const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+                const classGrade = req.query.class || "";
+                const subject = req.query.subject || "";
+                const location = req.query.location || "";
+                const minSalary = req.query.minSalary ? parseInt(req.query.minSalary) : 0;
+                const maxSalary = req.query.maxSalary ? parseInt(req.query.maxSalary) : Infinity;
 
-                // Filter
-                const query = {
-                    status: 'approved',
-                    $or: [
+                // Build query
+                let query = { status: 'approved' };
+
+                // Add filters
+                if (classGrade) query.classGrade = classGrade;
+                if (subject) query.subject = { $regex: subject, $options: 'i' };
+                if (location) query.location = { $regex: location, $options: 'i' };
+                if (minSalary > 0) query.salary = { ...query.salary, $gte: minSalary };
+                if (maxSalary < Infinity) query.salary = { ...query.salary, ...(query.salary ? { $lte: maxSalary } : { $lte: maxSalary }) };
+
+                // Add search condition
+                if (search) {
+                    query.$or = [
                         { subject: { $regex: search, $options: 'i' } },
                         { location: { $regex: search, $options: 'i' } }
-                    ]
-                };
+                    ];
+                }
 
                 const skip = (page - 1) * limit;
 
@@ -234,15 +274,16 @@ async function run() {
                     .limit(limit)
                     .toArray();
 
-                // pagination count
                 const total = await tuitionCollection.countDocuments(query);
 
                 res.send({
                     tuitions: result,
                     totalPages: Math.ceil(total / limit),
-                    currentPage: page
+                    currentPage: page,
+                    totalResults: total
                 });
             } catch (error) {
+                console.error("Error fetching tuitions:", error);
                 res.status(500).send({ message: "Error fetching tuitions" });
             }
         });
@@ -300,7 +341,7 @@ async function run() {
 
         //  GET Applications by Tutor (Merged with Tuition Data)
         // This is used for "My Applications" AND "Ongoing Tuitions"
-        app.get('/applications/my-applications/:email', verifyFirebaseToken, async (req, res) => {
+        app.get('/applications/my-applications/:email', verifyFirebaseToken, verifyTutor, async (req, res) => {
             const email = req.params.email;
 
             try {
@@ -384,30 +425,17 @@ async function run() {
             res.send(result);
         });
 
-
-        // index.js
-
-        //   GET Payment History by Student Email
-        app.get('/payments/my-payments/:email', verifyFirebaseToken, async (req, res) => {
-            const email = req.params.email;
-            const query = { studentEmail: email };
-
-            // Sort by newest first
-            const result = await paymentCollection.find(query).sort({ date: -1 }).toArray();
-            res.send(result);
-        });
-
         // ======================================== Manage tutors applications
         //   GET Applications for a specific tuition
         // Doc Ref: 
         app.get('/applications/for-my-tuition/:tuitionId', verifyFirebaseToken, async (req, res) => {
             const tuitionId = req.params.tuitionId;
-            const query = { tuitionId: tuitionId };
+            const query = { tuitionId: new ObjectId(tuitionId) };
 
             const result = await applicationCollection.find(query).toArray();
             res.send(result);
         });
-        //   PATCH Application Status (Accept/Reject)
+        //   PATCH Application Status
         app.patch('/applications/status/:id', verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
             const { status } = req.body;
@@ -417,6 +445,44 @@ async function run() {
             };
             const result = await applicationCollection.updateOne(filter, updateDoc);
             res.send(result);
+        });
+
+        // ======================================== Tutor Dashboard APIs
+
+        // 1. GET Tutor Revenue
+        app.get('/payments/tutor/:email', verifyFirebaseToken, verifyTutor, async (req, res) => {
+            try {
+                const email = req.params.email;
+                const query = { tutorEmail: email };
+
+                const result = await paymentCollection.find(query).sort({ date: -1 }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error fetching revenue info" });
+            }
+        });
+
+        // 2. PATCH Update Application
+        app.patch('/applications/update-request/:id', verifyFirebaseToken, verifyTutor, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { experience, salary, qualifications } = req.body;
+
+                const filter = { _id: new ObjectId(id), status: 'pending' };
+                const updateDoc = {
+                    $set: { experience, salary, qualifications }
+                };
+
+                const result = await applicationCollection.updateOne(filter, updateDoc);
+
+                if (result.matchedCount === 0) {
+                    return res.status(400).send({ message: "Application not found or already approved/rejected." });
+                }
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Error updating application" });
+            }
         });
 
         // =========================================payments API
@@ -461,6 +527,16 @@ async function run() {
             const appResult = await applicationCollection.updateOne(appQuery, appUpdate);
 
             res.send({ paymentResult, tuitionResult, appResult });
+        });
+
+        //   GET Payment History by Student Email
+        app.get('/payments/my-payments/:email', verifyFirebaseToken, async (req, res) => {
+            const email = req.params.email;
+            const query = { studentEmail: email };
+
+            // Sort by newest first
+            const result = await paymentCollection.find(query).sort({ date: -1 }).toArray();
+            res.send(result);
         });
 
 
