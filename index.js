@@ -211,10 +211,22 @@ async function run() {
         // GET All Tutors (Public)
         app.get('/tutors', async (req, res) => {
             try {
-                const query = { role: 'tutor' };
+                const search = req.query.search || "";
+                const subject = req.query.subject || "";
+
+                let query = { role: 'tutor' };
+
+                if (search) {
+                    query.$or = [
+                        { name: { $regex: search, $options: 'i' } },
+                        { email: { $regex: search, $options: 'i' } }
+                    ];
+                }
+
                 const result = await userCollection.find(query).toArray();
                 res.send(result);
             } catch (error) {
+                console.error("Error fetching tutors:", error);
                 res.status(500).send({ message: "Error fetching tutors" });
             }
         });
