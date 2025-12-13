@@ -610,7 +610,11 @@ async function run() {
             const tuitions = await tuitionCollection.estimatedDocumentCount();
 
             const payments = await paymentCollection.find().toArray();
-            const revenue = payments.reduce((total, payment) => total + payment.amount, 0);
+
+            const revenue = payments.reduce((total, payment) => {
+                const amount = Number(payment.amount);
+                return total + (isNaN(amount) ? 0 : amount);
+            }, 0);
 
             res.send({
                 users,
@@ -621,8 +625,6 @@ async function run() {
         });
 
 
-
-
         await client.db("admin").command({ ping: 1 });//have to comment later
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
@@ -631,7 +633,6 @@ async function run() {
     }
 }
 run().catch(console.dir);
-
 
 app.get('/', (req, res) => {
     res.send("eTuitionBd server is running fine!");
