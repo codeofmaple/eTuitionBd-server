@@ -130,7 +130,7 @@ async function run() {
                     return res.status(404).send({ message: "User not found" });
                 }
 
-                // Security: only the same user can update their profile
+                // only the same user can update their profile
                 if (
                     !req.token_email ||
                     existing.email.toLowerCase() !== req.token_email.toLowerCase()
@@ -179,7 +179,8 @@ async function run() {
 
 
         // tuitions API
-        app.post('/tuitions', verifyFirebaseToken, async (req, res) => {
+        // create a tuition
+        app.post('/tuitions', verifyFirebaseToken, verifyStudent, async (req, res) => {
             try {
                 const newTuition = req.body;
 
@@ -243,7 +244,6 @@ async function run() {
             }
         });
 
-        //=======================================================
         // ======================================== Public Tuition APIs
         //  GET All Approved Tuitions
         app.get('/tuitions', async (req, res) => {
@@ -312,8 +312,7 @@ async function run() {
             }
         });
 
-        // ======================================== Tutor Application API
-
+        // ======================================== Tutor Application APIs
         //  POST Apply for Tuition
         app.post('/applications', verifyFirebaseToken, verifyTutor, async (req, res) => {
             try {
@@ -324,7 +323,7 @@ async function run() {
                     return res.status(400).send({ message: "Tuition ID is required" });
                 }
 
-                // 2. Convert tuitionId to ObjectId for linking
+                // 2. ObjectId for linking
                 const tuitionIdObj = new ObjectId(application.tuitionId);
 
                 const existingApp = await applicationCollection.findOne({
@@ -352,7 +351,7 @@ async function run() {
         });
 
         //  GET Applications by Tutor (Merged with Tuition Data)
-        // This is used for "My Applications" AND "Ongoing Tuitions"
+        // This is used for "My Applications" AND "Ongoing Tuitions" - Tutor Dashboard
         app.get('/applications/my-applications/:email', verifyFirebaseToken, verifyTutor, async (req, res) => {
             const email = req.params.email;
 
@@ -380,7 +379,7 @@ async function run() {
             }
         });
 
-        //  DELETE Application (For Tutor to cancel)
+        //  DELETE Application (For Tutor to cancel) - only if status is 'pending' and edit more
         app.delete('/applications/:id', verifyFirebaseToken, verifyTutor, async (req, res) => {
             const id = req.params.id;
             const result = await applicationCollection.deleteOne({ _id: new ObjectId(id) });
@@ -389,7 +388,7 @@ async function run() {
 
         // ======================================== Only for students
         // Get all tuitions
-        app.get('/tuitions/student/my-tuitions', verifyFirebaseToken, async (req, res) => {
+        app.get('/tuitions/student/my-tuitions', verifyFirebaseToken, verifyStudent, async (req, res) => {
             try {
                 let studentEmail = req.token_email;
                 if (!studentEmail) {
@@ -460,7 +459,6 @@ async function run() {
         });
 
         // ======================================== Tutor Dashboard APIs
-
         // 1. GET Tutor Revenue
         app.get('/payments/tutor/:email', verifyFirebaseToken, verifyTutor, async (req, res) => {
             try {
@@ -518,7 +516,7 @@ async function run() {
         app.post('/payments', verifyFirebaseToken, async (req, res) => {
             const payment = req.body;
 
-            // 1. Save to Payments Collection
+            // 1. Saveing to Payments Collection
             const paymentResult = await paymentCollection.insertOne(payment);
 
             // 2. Update Tuition Status to 'booked'
