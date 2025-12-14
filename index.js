@@ -438,7 +438,6 @@ async function run() {
 
         // ======================================== Manage tutors applications
         //   GET Applications for a specific tuition
-        // Doc Ref: 
         app.get('/applications/for-my-tuition/:tuitionId', verifyFirebaseToken, async (req, res) => {
             const tuitionId = req.params.tuitionId;
             const query = { tuitionId: new ObjectId(tuitionId) };
@@ -446,6 +445,7 @@ async function run() {
             const result = await applicationCollection.find(query).toArray();
             res.send(result);
         });
+
         //   PATCH Application Status
         app.patch('/applications/status/:id', verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
