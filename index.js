@@ -9,7 +9,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 app.use(
     cors({
         origin: [
-            "http://localhost:5173",
+            // "http://localhost:5173",
             "https://etuitionbd-360.web.app"
         ],
         credentials: true,
@@ -682,8 +682,8 @@ async function run() {
         });
 
 
-        // await client.db("admin").command({ ping: 1 });//have to comment later
-        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        await client.db("admin").command({ ping: 1 });//have to comment later
+        console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
