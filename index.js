@@ -10,13 +10,11 @@ app.use(
     cors({
         origin: [
             "http://localhost:5173",
-            "http://localhost:5173",
             "https://etuitionbd-360.web.app"
         ],
         credentials: true,
     })
 );
-app.use(express.urlencoded({ extended: true }));
 
 app.use(express.json());
 
@@ -63,6 +61,7 @@ const verifyFirebaseToken = async (req, res, next) => {
 async function run() {
     try {
         // await client.connect(); //have to comment later
+
         // database and collections
         const db = client.db("eTuitionBd_db")
         const userCollection = db.collection("users")
@@ -684,8 +683,8 @@ async function run() {
         });
 
 
-        await client.db("admin").command({ ping: 1 });//have to comment later
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });//have to comment later
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
