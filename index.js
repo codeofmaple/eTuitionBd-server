@@ -17,7 +17,6 @@ app.use(
 );
 
 app.use(express.json());
-app.use(express.json());
 
 // firebase admin
 var admin = require("firebase-admin");
@@ -684,7 +683,7 @@ async function run() {
 
 
         // await client.db("admin").command({ ping: 1 });//have to comment later
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
