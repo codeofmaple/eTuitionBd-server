@@ -1,3 +1,4 @@
 node_modules/
 .env
 etuitionbd-360-firebase-admin-key.json
+.vercel

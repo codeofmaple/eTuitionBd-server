@@ -6,7 +6,17 @@ const PORT = process.env.PORT || 3000;
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // middleware
-app.use(cors());
+app.use(
+    cors({
+        origin: [
+            "http://localhost:5173",
+            "https://etuitionbd-360.web.app"
+        ],
+        credentials: true,
+    })
+);
+
+app.use(express.json());
 app.use(express.json());
 
 // firebase admin
@@ -51,7 +61,7 @@ const verifyFirebaseToken = async (req, res, next) => {
 
 async function run() {
     try {
-        await client.connect(); //have to comment later
+        // await client.connect(); //have to comment later
         // database and collections
         const db = client.db("eTuitionBd_db")
         const userCollection = db.collection("users")
@@ -413,7 +423,7 @@ async function run() {
         });
 
         // UPDATE tuition
-        app.put('/tuitions/:id', verifyFirebaseToken, async (req, res) => {
+        app.put('/tuitions/:id', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const id = req.params.id;
             const body = req.body;
 
@@ -426,7 +436,7 @@ async function run() {
         });
 
         // DELETE tuition
-        app.delete('/tuitions/:id', verifyFirebaseToken, async (req, res) => {
+        app.delete('/tuitions/:id', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const id = req.params.id;
 
             const result = await tuitionCollection.deleteOne({
@@ -436,9 +446,9 @@ async function run() {
             res.send(result);
         });
 
-        // ======================================== Manage tutors applications
+        // ======================================== Manage tutors applications (student dashboard)
         //   GET Applications for a specific tuition
-        app.get('/applications/for-my-tuition/:tuitionId', verifyFirebaseToken, async (req, res) => {
+        app.get('/applications/for-my-tuition/:tuitionId', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const tuitionId = req.params.tuitionId;
             const query = { tuitionId: new ObjectId(tuitionId) };
 
@@ -447,7 +457,7 @@ async function run() {
         });
 
         //   PATCH Application Status
-        app.patch('/applications/status/:id', verifyFirebaseToken, async (req, res) => {
+        app.patch('/applications/status/:id', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const id = req.params.id;
             const { status } = req.body;
             const filter = { _id: new ObjectId(id) };
@@ -497,7 +507,7 @@ async function run() {
 
         // =========================================payments API
         //   POST Create Payment Intent (Stripe)
-        app.post('/create-payment-intent', verifyFirebaseToken, async (req, res) => {
+        app.post('/create-payment-intent', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const { salary } = req.body;
             const amount = parseInt(salary * 100);
 
@@ -513,7 +523,7 @@ async function run() {
         });
 
         //   POST Record Payment and Update Tuition & Application Status
-        app.post('/payments', verifyFirebaseToken, async (req, res) => {
+        app.post('/payments', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const payment = req.body;
 
             // 1. Saveing to Payments Collection
@@ -540,7 +550,7 @@ async function run() {
         });
 
         //   GET Payment History by Student Email
-        app.get('/payments/my-payments/:email', verifyFirebaseToken, async (req, res) => {
+        app.get('/payments/my-payments/:email', verifyFirebaseToken, verifyStudent, async (req, res) => {
             const email = req.params.email;
             const query = { studentEmail: email };
 
@@ -554,22 +564,48 @@ async function run() {
         // ======================================= Admin manage users
         // GET all users 
         app.get('/users', verifyFirebaseToken, verifyAdmin, async (req, res) => {
-            const result = await userCollection.find().toArray();
-            res.send(result);
+            try {
+                const search = req.query.search || "";
+                let query = {};
+
+                if (search) {
+                    query = {
+                        $or: [
+                            { name: { $regex: search, $options: 'i' } },
+                            { email: { $regex: search, $options: 'i' } }
+                        ]
+                    };
+                }
+
+                const result = await userCollection.find(query).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to fetch users" });
+            }
         });
 
         // Change User Role
-        app.patch('/users/role/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
-            const id = req.params.id;
-            const { role } = req.body;
-            const filter = { _id: new ObjectId(id) };
-            const updatedDoc = {
-                $set: {
-                    role: role
-                }
+        app.patch('/users/admin/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { name, role, phone, photo } = req.body;
+
+                const filter = { _id: new ObjectId(id) };
+                const updateDoc = {
+                    $set: {
+                        ...(name && { name }),
+                        ...(role && { role }),
+                        ...(phone && { phone }),
+                        ...(photo && { photoURL: photo })
+                    }
+                };
+
+                const result = await userCollection.updateOne(filter, updateDoc);
+                res.send(result);
+            } catch (error) {
+                console.error("Admin update error:", error);
+                res.status(500).send({ message: "Failed to update user" });
             }
-            const result = await userCollection.updateOne(filter, updatedDoc);
-            res.send(result);
         });
 
         // DELETE: Remove a User
@@ -583,22 +619,46 @@ async function run() {
         // ======================================== Admin manage tuitions
         // GET ALL Tuitions
         app.get('/tuitions/all/all', verifyFirebaseToken, verifyAdmin, async (req, res) => {
-            const result = await tuitionCollection.find().sort({ createdAt: -1 }).toArray();
-            res.send(result);
+            try {
+                const { status } = req.query;
+                let query = {};
+
+                if (status) {
+                    query.status = { $regex: status, $options: 'i' };
+                }
+
+                // sorting by newest first
+                const result = await tuitionCollection.find(query).sort({ postingDate: -1 }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to fetch all tuitions" });
+            }
         });
 
         // PATCH: Approve/Reject Tuition
         app.patch('/tuitions/status/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
-            const id = req.params.id;
-            const { status } = req.body;
-            const filter = { _id: new ObjectId(id) };
-            const updatedDoc = {
-                $set: {
-                    status: status
+            try {
+                const id = req.params.id;
+                const { status } = req.body;
+
+                if (!['approved', 'rejected'].includes(status.toLowerCase())) {
+                    return res.status(400).send({ message: "Invalid status value" });
                 }
+
+                const filter = { _id: new ObjectId(id) };
+                const updateDoc = {
+                    $set: {
+                        status: status.toLowerCase(),
+                        moderatedAt: new Date()
+                    }
+                };
+
+                const result = await tuitionCollection.updateOne(filter, updateDoc);
+                res.send(result);
+            } catch (error) {
+                console.error("Tuition status update error:", error);
+                res.status(500).send({ message: "Failed to update tuition status" });
             }
-            const result = await tuitionCollection.updateOne(filter, updatedDoc);
-            res.send(result);
         });
 
         //======================================== Admin Stats
@@ -623,7 +683,7 @@ async function run() {
         });
 
 
-        await client.db("admin").command({ ping: 1 });//have to comment later
+        // await client.db("admin").command({ ping: 1 });//have to comment later
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
